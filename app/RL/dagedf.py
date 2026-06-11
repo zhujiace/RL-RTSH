@@ -113,16 +113,14 @@ class DAGEDFScheduler(object):
         self.env = DAGEnv(seed, uti, processor_config=processor_config, task_count=task_count)
         self.state, self.dep = self.env.reset()
         time, proc_state, task_states, request = self.state
-        min_period = 1000
 
+        max_period = 0
         self.task_num = len(task_states)
         for i in range(self.task_num):
-            if task_states[i][0][5] < min_period:
-                min_period = task_states[i][0][5]
-        # self.env.client.set_simulation_timebound(min_period*200)
-        # self.set_bound = min_period*200
-        # self.env.client.set_simulation_timebound(10000)
-        self.set_bound = self.env.task_state[0][0][-1]*10
+            if task_states[i][0][5] > max_period:
+                max_period = task_states[i][0][5]
+        # self.set_bound = max_period
+        self.set_bound = self.env.time_bound
 
         self.task_unit = np.zeros(self.task_num, dtype=int)
         for i in range(self.task_num):
@@ -180,6 +178,9 @@ class DAGEDFScheduler(object):
             for i in range(request[2]):
                 if self.queue == []:
                     self.state, reward, terminate, _ = self.env.step(-1,-1)
+                    if terminate and self.state[0] < self.set_bound:
+                        done = False
+                        end_time = self.state[0]
                     self.trajectory.append((time,(-1, -1)))
                     if self.verbose: print(f"No ready segments, skipping...")
                     break
@@ -200,11 +201,12 @@ class DAGEDFScheduler(object):
                 # no reservation
                 self.state, reward, terminate, _ = self.env.step(seg[0], seg[1])
                 self.trajectory.append((time,(seg[0], seg[1])))
+                # print(terminate, time, self.state[0], self.set_bound)
                 if terminate and self.state[0] < self.set_bound:
                     done = False
                     end_time = self.state[0]
                     break
-                    
+            # print(terminate, time, self.state[0], self.set_bound)        
         
             if self.verbose:
                 execution = self.env.client.query_task_execution_states()
@@ -283,9 +285,21 @@ def write_to_csv_edf(results, filename):
             writer.writerow(result)
 
 def test_edf(utis, seeds, filename = "edf_results_random.csv", processor_config=None):
-    with open(filename, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["seed", "uti", "schedulable", "timetamp"])  # 写入表头
+    header = ["seed", "uti", "schedulable", "timetamp"]
+    needs_header = True
+
+    try:
+        with open(filename, mode="r", newline="") as file:
+            first_row = next(csv.reader(file), None)
+            if first_row == header:
+                needs_header = False
+    except FileNotFoundError:
+        pass
+
+    if needs_header:
+        with open(filename, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(header)
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # 提交任务
@@ -323,14 +337,14 @@ if __name__ == "__main__":
     #     write_to_csv(results, filename)
     #     results = []
 
-    sche = DAGEDFScheduler(seed=14134, uti= 2.7, smart=0, verbose=False, processor_config={0: 2, 7: 2, 8: 1}, task_count=10)
-    print(sche.schedule())
+    # sche = DAGEDFScheduler(seed=14134, uti= 1.0, smart=0, verbose=False, processor_config={0: 2, 7: 2}, task_count=10)
+    # print(sche.schedule())
     # sche.export('./Schedule_list/ViTLlama/edf_14134_0.4_.pkl')
 
 
-    # # utis = [round(2.5 + i * 0.1, 1) for i in range(15)]  # [1.5, 1.6, ..., 3.9]
-    # utis = [0.5]
+    # utis = [round(1.0 + i * 0.1, 1) for i in range(15)]  # [1.5, 1.6, ..., 3.9]
+    utis = [1.3]
     # # seeds = [51, 3, 33, 22, 98, 105, 70, 111, 85, 129, 156, 175, 162, 184, 219, 224, 226, 150, 225, 202, 248, 285, 247, 303, 256, 259, 307, 341, 344, 359, 366, 323, 331, 409, 380, 386, 420, 421, 405, 428, 465, 442, 487, 531, 482, 496, 536, 540, 526, 581, 584, 555, 592, 602, 575, 570, 607, 654, 618, 662, 667, 704, 678, 683, 702, 715, 687, 718, 725, 771, 776, 795, 824, 823, 827, 803, 847, 890, 866, 852, 899, 900, 939, 941, 944, 957, 53, 52, 54, 5, 6, 26, 18, 24, 39, 14, 27, 45, 20, 67]  # seed从1到100
-    # seeds = [126, 490,  997, 971, 688, 331, 681, 257, 201, 534, 696, 723, 310, 116, 734, 235, 167, 39, 495, 548, 515, 164, 977, 847, 233, 457, 991, 315, 939, 445, 607, 325, 80, 800, 324, 209, 665, 321, 967, 587, 925, 498, 887, 261, 266, 831, 690, 825, 568, 520, 139, 597, 114, 357, 245, 647, 989, 311, 431, 771, 68, 202, 727, 956, 529, 276, 400, 238, 210, 877, 735, 788, 379, 615, 795, 888, 81, 193, 616, 496, 309, 226, 878, 439, 93, 964, 89, 337, 214, 476, 872, 767, 653, 643, 359, 937, 769, 850, 316, 94]
+    seeds = [126, 490,  997, 971, 688, 331, 681, 257, 201, 534, 696, 723, 310, 116, 734, 235, 167, 39, 495, 548, 515, 164, 977, 847, 233, 457, 991, 315, 939, 445, 607, 325, 80, 800, 324, 209, 665, 321, 967, 587, 925, 498, 887, 261, 266, 831, 690, 825, 568, 520, 139, 597, 114, 357, 245, 647, 989, 311, 431, 771, 68, 202, 727, 956, 529, 276, 400, 238, 210, 877, 735, 788, 379, 615, 795, 888, 81, 193, 616, 496, 309, 226, 878, 439, 93, 964, 89, 337, 214, 476, 872, 767, 653, 643, 359, 937, 769, 850, 316, 94]
     # seeds = [126, 991, 997, 681, 14134]
-    # test_edf(utis, seeds, filename = "edf_random_2c1g_ViTLlama.csv")
+    test_edf(utis, seeds, filename = "edf_2c2g_10t_1000.csv", processor_config={0: 2, 7: 2})

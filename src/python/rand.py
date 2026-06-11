@@ -864,7 +864,6 @@ class DAGLimitedGenerator:
         self.generated = True
         return res
 
-
 class MultiHardwareDAGLimitedGenerator:
     """Generate DAG task sets with configurable hardware types and transitions."""
 
@@ -1112,7 +1111,6 @@ class MultiHardwareDAGLimitedGenerator:
         self.generated = True
         return res
 
-
 class DAGViTGenerator:
     """Randomly generate several DAG ViT tasks by uunifast algorithm.
 
@@ -1298,6 +1296,217 @@ class DAGViTLammaGenerator:
         self.task_sets = res
         return res
 
+
+class DAGTenTaskChainGenerator:
+    """
+    Generate 10 sequential chain tasks from profiled segment lengths.
+    Each task is modeled as a chain:
+        0->1->2->3->...->(n-1)
+
+    Segment lengths are already rounded up to integer units.
+    Processor types are modeled with only CPU/GPU.
+    """
+
+    def __init__(self, seed: int, n: int = 10, uti: float = 3.0) -> None:
+        self.n = n
+        self.uti = uti
+        self.U = np.zeros(n, dtype=float)
+
+        np.random.seed(seed)
+        self.seed = seed
+
+        # enum constant, consistent with cpp src
+        self.CPU = 0
+        self.DataCopy = 3
+        self.GPU = 7
+        self.FPGA = 8
+        self.UNKNOWN = 9
+
+        self.proc_type = 10
+        self.avail_procs = np.zeros(self.proc_type, dtype=bool)
+        self.avail_procs[self.CPU] = True
+        self.avail_procs[self.GPU] = True
+        self.avail_proc_list = [self.CPU, self.GPU]
+
+    def generate_utilizations(self):
+        """Generate utilization by UUniFast-like normalization, stored in self.U."""
+        np.random.seed(self.seed + 19742)
+        min_task_uti = self.uti * 0.05
+        if min_task_uti >= 0.9:
+            raise ValueError(
+                f"Cannot satisfy utilization constraints: min per-task uti {min_task_uti:.3f} "
+                "must be smaller than 0.9."
+            )
+        if self.n * min_task_uti > self.uti:
+            raise ValueError(
+                f"Cannot satisfy utilization constraints: {self.n} tasks each requiring at least "
+                f"{min_task_uti:.3f} exceeds total uti {self.uti:.3f}."
+            )
+
+        while True:
+            valid = 1
+            for ui in range(self.n):
+                self.U[ui] = float(randint(1, 100))
+            resolution = np.sum(self.U) / self.uti
+
+            for ui in range(self.n):
+                self.U[ui] = self.U[ui] / resolution
+                if self.U[ui] >= 0.9 or self.U[ui] < min_task_uti:
+                    valid = 0
+            if valid == 1:
+                break
+
+    @staticmethod
+    def make_chain_dependency(num_nodes: int):
+        """Return flattened dependency list: [0,1, 1,2, 2,3, ...]."""
+        dep = []
+        for i in range(num_nodes - 1):
+            dep += [i, i + 1]
+        return dep
+
+    def make_alternating_types(self, num_nodes: int, start_with_cpu: bool = True):
+        """
+        Default processor type pattern:
+            CPU, GPU, CPU, GPU, ...
+        """
+        first = self.CPU if start_with_cpu else self.GPU
+        second = self.GPU if start_with_cpu else self.CPU
+        return [first if i % 2 == 0 else second for i in range(num_nodes)]
+
+    def generate_tasksets(self):
+        self.generate_utilizations()
+
+        # ------------------------------------------------------------
+        # Rounded-up profiling data
+        # ------------------------------------------------------------
+        tasks = [None] * 10
+
+        tasks[0] = np.array(
+            [1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2,
+             1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1,
+             1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2,
+             1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2,
+             2, 2, 2, 2, 2, 2],
+            dtype=int
+        )  # text_chain, sum=119, nodes=86
+
+        tasks[1] = np.array(
+            [1, 2, 1, 1302, 1, 2, 1, 48, 1, 2, 1, 3, 1, 1293, 1, 2, 1, 48, 1, 2, 1],
+            dtype=int
+        )  # semantic_retrieval_chain
+        
+        tasks[2] = np.array(
+            [2, 1, 4, 2, 4, 1, 4, 2, 4, 1, 4, 2, 4, 1, 4, 2, 4, 1, 4, 2,
+             4, 1, 4, 2, 4, 1, 4, 2, 4, 1, 4, 2, 4, 2, 4, 2, 4, 2, 4, 1,
+             4, 2, 4, 2, 4, 1, 4, 2, 4, 2, 4, 1, 4, 2, 4, 2, 4, 1, 4, 2,
+             4, 2, 4, 1, 4, 2, 2, 1, 4, 2, 4, 1, 4, 2, 4, 2, 4, 1, 4, 2,
+             4, 2, 4, 1, 3],
+            dtype=int
+        )  # instruction_refinement_chain, sum=234, nodes=85
+
+        tasks[3] = np.array(
+            [4, 1, 2, 161, 2, 1, 2, 39, 2, 1, 2, 151, 3, 1, 2, 37, 3, 2,
+             3, 1, 2, 197, 2, 1, 2, 41, 2, 1, 2, 183, 2, 1, 3, 40, 3, 3,
+             2],
+            dtype=int
+        )  # response_generation_chain, sum=907, nodes=37
+
+        tasks[4] = np.array(
+            [2, 2, 1, 115, 1, 2, 1, 43, 1, 3, 1, 114, 1, 3, 1, 43, 1, 9,
+             3, 1, 1, 213, 1, 1, 1, 39, 1, 1, 1, 196, 1, 1, 1, 36, 1, 3,
+             2],
+            dtype=int
+        )  # planning_generation_chain, sum=848, nodes=37
+
+        tasks[5] = np.array(
+            [1, 9, 1, 3, 1, 113, 1, 4, 1, 51, 1, 3, 1, 119, 1, 4, 1, 59,
+             1, 6, 1, 2, 1],
+            dtype=int
+        )  # image_understanding_chain, sum=385, nodes=23
+
+        tasks[6] = np.array(
+            [1, 10, 1, 325, 1, 3, 1, 53, 1, 3, 1, 312, 1, 3, 1, 56, 1, 2,
+             1, 25, 1, 149, 1, 3, 2, 59, 1, 2, 1, 149, 1, 3, 1, 53, 1, 3,
+             1, 20, 1, 137, 1, 3, 1, 52, 1, 5, 1, 132, 1, 3, 1, 43, 2, 3,
+             1, 123, 1, 3, 1, 52, 2, 3, 1, 148, 1, 6, 1, 61, 1, 2, 1, 151,
+             2, 8, 1, 60, 1, 3, 1, 157, 1, 5, 1, 65, 1, 3, 1, 17, 1, 479,
+             1, 3, 1, 37, 1, 2, 1, 492, 1, 3, 1, 34, 1, 5, 3, 2, 1],
+            dtype=int
+        )  # hierarchical_vision_chain, sum=3595, nodes=107
+
+        tasks[7] = np.array(
+            [1, 8, 1, 2, 1, 1, 1, 139, 1, 4, 1, 54, 1, 3, 1, 120, 1, 4,
+             1, 59, 1, 6, 1, 180, 1, 1, 1, 145, 1, 1, 1, 41, 1, 1, 1, 186,
+             1, 1, 1, 146, 1, 1, 1, 45, 1, 2, 1, 2, 1],
+            dtype=int
+        )  # object_detection_chain, sum=1177, nodes=49
+
+        tasks[8] = np.array(
+            [1, 2, 1, 107, 1, 2, 1, 25, 1, 180, 1, 1, 1, 3, 1, 98, 1, 2,
+             1, 24, 1, 172, 1, 1, 1, 2, 2, 1, 1],
+            dtype=int
+        )  # expert_routing_chain, sum=636, nodes=29
+
+        tasks[9] = np.array(
+            [1, 25, 1, 38, 1, 107, 1, 62, 1, 38, 1, 3, 1, 41, 1, 105, 2,
+             63, 1, 37, 1, 4, 4, 1, 1],
+            dtype=int
+        )  # speech_understanding_chain, sum=541, nodes=25
+
+        # ------------------------------------------------------------
+        # Task names
+        # ------------------------------------------------------------
+        task_names = [
+            "text_chain",
+            "semantic_retrieval_chain",
+            "instruction_refinement_chain",
+            "response_generation_chain",
+            "planning_generation_chain",
+            "image_understanding_chain",
+            "hierarchical_vision_chain",
+            "object_detection_chain",
+            "expert_routing_chain",
+            "speech_understanding_chain",
+        ]
+
+        # ------------------------------------------------------------
+        # Dependencies: all tasks are simple sequential chains
+        # ------------------------------------------------------------
+        dependencies = [self.make_chain_dependency(len(t)) for t in tasks]
+
+        # ------------------------------------------------------------
+        # Types: default CPU/GPU alternating pattern
+        # You can replace any task_types[i] with your exact profiled device order.
+        # ------------------------------------------------------------
+        task_types = [self.make_alternating_types(len(t), start_with_cpu=True) for t in tasks]
+
+        # ------------------------------------------------------------
+        # Pack results
+        # Format:
+        # [period, num_nodes, num_edges,
+        #  (s1,t1), (s2,t2), ...,
+        #  dependency...]
+        # ------------------------------------------------------------
+        res = []
+        for i in range(self.n):
+            num_nodes = len(tasks[i])
+            dep = dependencies[i]
+            num_edges = len(dep) // 2
+
+            period = int(np.sum(tasks[i]) / self.U[i])
+
+            tmp = [period, num_nodes, num_edges]
+            for j in range(num_nodes):
+                tmp += [int(tasks[i][j]), int(task_types[i][j])]
+            tmp += dep
+            res.append(tmp)
+
+        self.task_names = task_names
+        self.tasks = tasks
+        self.task_types = task_types
+        self.dependencies = dependencies
+        self.task_sets = res
+        return res
 
 from workloads import WORKLOADS, get_always_on_workload, get_event_workload
 from workloads_abstraction import abstract_event_workloads

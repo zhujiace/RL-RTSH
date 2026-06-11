@@ -31,8 +31,9 @@ def parse_processor_config(config_str: str) -> dict:
     return processor_config
 
 def train_on_policy_agent(env:DAGEnv, agent:PPOSchedulerAgent, num_episodes, device, return_list, timestamp_list, writer, mode):
-    print(env.task_state[0][0][-1],env.task_state[1][0][-1],env.task_state[2][0][-1],env.task_state[3][0][-1],env.task_state[4][0][-1])
-    target = env.task_state[0][0][-1]*10
+    for task_id, task_state in enumerate(env.task_state):
+        print(f"task {task_id} period: {task_state[0][-1]}")
+    target = env.time_bound
     print(target)
     done_num = 0
     JCT_penalty = 0
@@ -96,7 +97,7 @@ def train_on_policy_agent(env:DAGEnv, agent:PPOSchedulerAgent, num_episodes, dev
                 if target <= next_timestamp:
                     if mode == "test":
                         # output_file = f"./Schedule_list/971_3.0_w/episode_{num_episodes / 10 * i + i_episode + 1}_list.pkl"
-                        output_file = f"./Schedule_list/ViTLlama/uti04_episode_{num_episodes / 10 * i + i_episode + 1}_list.pkl"
+                        output_file = f"./Schedule_list/Ascend/s257u13_episode_{num_episodes / 10 * i + i_episode + 1}_list.pkl"
                         with open(output_file, 'wb') as f:
                             pickle.dump(env.trajectory, f)
                         # AJCT(open(output_file, 'rb'), env)
@@ -137,7 +138,7 @@ def main():
 
     parser.add_argument("--entropy_coef", type=float, default=0, help="policy entropy")
     parser.add_argument("--mode", type=str, default="default", help="")
-    parser.add_argument("--processor_config", type=str, default="0:2,7:2,8:1",
+    parser.add_argument("--processor_config", type=str, default="0:2,7:2",
                         help="processor config in the format type:count,type:count")
     parser.add_argument("--task_count", type=int, default=5)
     parser.add_argument("--early_completion_bonus", action="store_true")
@@ -150,8 +151,8 @@ def main():
     writer = None
     if args.draw:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        run_name = '{}_{}_{}eps_{}t_{}'.format(
-            args.seed, args.uti, args.episodes, args.task_count, args.label
+        run_name = '{}_{}_{}eps_{}t_{}_{}'.format(
+            args.seed, args.uti, args.episodes, args.task_count, args.mode, args.label
         )
         log_dir = os.path.join(current_dir, 'PPO_runs', date.today().isoformat(), run_name)
         writer = SummaryWriter(log_dir=log_dir)
@@ -177,7 +178,7 @@ def main():
         hidden_dim=64, 
         is_sampling=False
         )
-    actor_lr = 3e-4
+    actor_lr = 1e-3
     critic_lr = 3e-4
     num_episodes = args.episodes
     gamma = 0.98 # gamma越大越关注长期奖励
@@ -190,11 +191,8 @@ def main():
 
     return_list, timestamp_list, done_num = train_on_policy_agent(env, agent, num_episodes, device, return_list, timestamp_list, writer, args.mode)
 
-    # np.save('mask1.npy', np.array(timestamp_list))
-    # np.save("2c1g_reward_681_1.5_2.npy", np.array(return_list))
-
-    if args.draw:
-        PPO_utils.draw_return(PPO_utils.moving_average(return_list,9), timestamp_list, "_ma")
+    # if args.draw:
+    #     PPO_utils.draw_return(PPO_utils.moving_average(return_list,9), timestamp_list, "_ma")
 
     output_file = args.path
     file_exists = os.path.isfile(output_file)

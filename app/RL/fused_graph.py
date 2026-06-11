@@ -133,7 +133,7 @@ class FusedGraphTemplate:
             | (current_proc_flags != -1)
         ).unsqueeze(1)
         mask[self.dag_summary_index] = True
-        mask[self.global_summary_idx] = False
+        mask[self.global_summary_idx] = True # global
 
         fused_data = Data(
             x=x,

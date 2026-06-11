@@ -42,6 +42,7 @@ CMakeCache.txt
 cmake_install.cmake
 
 # Project Executables
+build/
 build/main
 test/main
 
@@ -53,3 +54,16 @@ __pycache__
 ckpt/
 *.log
 logs/
+*.csv
+*.npy
+*.pt
+*.pth
+*.ckpt
+*.zip
+*.tar
+*.tar.gz
+app/RL/PPO_runs/
+app/RL/PPO_MAX/runs/
+app/RL/Rewards/
+app/RL/Schedule_list/**/*.pkl
+events.out.tfevents.*

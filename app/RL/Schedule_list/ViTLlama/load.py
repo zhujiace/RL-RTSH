@@ -1,6 +1,6 @@
 import pickle
 
-filename = "./episode_224.0_list.pkl"
+filename = "/home/zjc/hamster/HeterSchedulerSim/app/RL/Schedule_list/ViTLlama/episode_571.0_list.pkl"
 file = open(filename,'rb')
 # data = pickle.load(file)  
 # for d in data:
@@ -9,29 +9,31 @@ file = open(filename,'rb')
 #     print(task_id, node_id)
 
 data = pickle.load(file)
-import sys
-sys.path.append("/home/hamster/HeterSchedulerSim/src/python/")
-from dagenv import DAGEnv
-env = DAGEnv(14134, 0.4)
-state, dep = env.reset()
+print(data)
 
-state, dep = env.reset(False)
-done = False
-time, proc_state, task_states, request = state
-task_num = len(task_states)
+# import sys
+# sys.path.append("/home/hamster/HeterSchedulerSim/src/python/")
+# from dagenv import DAGEnv
+# env = DAGEnv(14134, 0.4)
+# state, dep = env.reset()
 
-data = pickle.load(file)    
-trace = []
+# state, dep = env.reset(False)
+# done = False
+# time, proc_state, task_states, request = state
+# task_num = len(task_states)
 
-for d in data:
+# data = pickle.load(file)    
+# trace = []
 
-    timestamp = d[0]
-    task_id, node_id = d[1]
-    proc_id = request[0]
-    state, reward, done,_=env.step(task_id, node_id)
-    time, proc_state, task_states, request = state
+# for d in data:
+
+#     timestamp = d[0]
+#     task_id, node_id = d[1]
+#     proc_id = request[0]
+#     state, reward, done,_=env.step(task_id, node_id)
+#     time, proc_state, task_states, request = state
             
-    if task_id == -1: continue
-    trace.append((timestamp, proc_id, task_id, node_id))
+#     if task_id == -1: continue
+#     trace.append((timestamp, proc_id, task_id, node_id))
 
-print(trace[:10])
+# print(trace[:10])

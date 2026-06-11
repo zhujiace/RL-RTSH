@@ -12,14 +12,14 @@ import numpy as np
 class RewardConfig:
     # Action-level reward: immediate feedback for scheduling or reserving.
     invalid_schedule_reward: float = 0
-    valid_schedule_reward: float = 2.0
-    forced_noop_reward: float = 0.0
+    valid_schedule_reward: float = 5.0
+    forced_noop_reward: float = -0.01
     avoidable_noop_penalty: float = -0.1
 
     # Time-step shaping reward: encourages progress and utilization at each timestamp.
     time_step_penalty: float = 0
     utilization_reward_scale: float = 0.0
-    on_time_job_completion_reward: float = 5.0
+    on_time_job_completion_reward: float = 0.0
 
     # Episode-level terminal reward: encourages successful completion over failure.
     miss_deadline_reward: float = 0
@@ -33,14 +33,14 @@ class RewardConfig:
 DEFAULT_REWARD_CONFIG = RewardConfig()
 
 class DAGEnv:
-    """ RL environment for interecting with the scheduling simulation python client.
+    """RL environment for interacting with the scheduling simulation Python client.
 
     Main APIs:
     ---
         step: choosed by the agent, will further invoke the "schedule" API;
         schedule: perform a scheduling command;
         reset: restart the client C++ backend;
-        update\_time: update the timestamp by 1
+        update_time: update the timestamp by 1
     
     Notes:
         current processor and task patterns are fixed; Using same seed and utilization
@@ -80,13 +80,19 @@ class DAGEnv:
         self.processor_config = self._normalize_processor_config(processor_config)
         self.enabled_proc_types = [proc_type for proc_type, count in self.processor_config.items() if count > 0]
 
-        from rand import MultiHardwareDAGLimitedGenerator
-        self.task_generator = MultiHardwareDAGLimitedGenerator(
-            self.seed,
-            uti=utilization,
-            n=task_count,
-            hardware_specs=self._build_hardware_specs(),
+        from rand import MultiHardwareDAGLimitedGenerator, DAGTenTaskChainGenerator
+        # self.task_generator = MultiHardwareDAGLimitedGenerator(
+        #     self.seed,
+        #     uti=utilization,
+        #     n=task_count,
+        #     hardware_specs=self._build_hardware_specs(),
+        # )
+        self.task_generator = DAGTenTaskChainGenerator(
+            seed=self.seed,
+            uti=utilization
         )
+
+        
 
         self.reward_config = DEFAULT_REWARD_CONFIG
         self.execution_progress_reward_scale = 1.0
@@ -204,7 +210,11 @@ class DAGEnv:
             self.task_num = len(self.tasks)
             self.task_state = np.zeros(self.task_num, dtype=tuple)
             # self.client.set_simulation_timebound(self.tasks[-1][0] + 5)
-            self.time_bound = self.tasks[0][0] * 10 + 5
+            # self.time_bound = self.tasks[0][0] * 10 + 5
+            max_period = max(task[0] for task in self.tasks)
+            # self.time_bound = max_period
+            self.time_bound = 1000
+            # print(max_period)
             self.client.set_simulation_timebound(self.time_bound)
             # print(f"Simulation Time Bound: {self.tasks[0][0]*100}")
     

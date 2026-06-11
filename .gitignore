@@ -65,5 +65,6 @@ logs/
 app/RL/PPO_runs/
 app/RL/PPO_MAX/runs/
 app/RL/Rewards/
-app/RL/Schedule_list/**/*.pkl
+app/RL/Schedule_list/
+app/RL/archive/
 events.out.tfevents.*
